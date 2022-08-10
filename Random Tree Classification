@@ -1,0 +1,45 @@
+#IMPORTING PYTHON LIBRARIES
+import arcpy
+from arcpy.sa import*
+from arcpy.ia import*
+
+#SET WORKSPACE
+OutPath = r"C:\RT test\Output"
+arcpy.env.workspace=OutPath
+
+#ASSIGN PATHS OF YOUR DATA SET TO CLIP THE AREA OF INTEREST FROM YOUR IMAGE *SENTINEL1 & SENTINEL2* 
+Area = r"C:\RT test\Image\Coverage_Farm1.shp"
+Image = r"C:\RT test\Image\subset_0_of_S1A_IW_GRDH_1SDV_20211110T011638_20211110T011703_040502_04CD8E_4AC1_Orb_Spk_TC_Stack.tif"
+
+#EXECUTE CLIPPING TOOL
+Clipped = arcpy.sa.ExtractByMask(Image,Area)
+
+#EXPORT OUTPUT AS *.tif* FILE
+Clip_1 = Clipped.save("Clip.tif")
+
+
+arcpy.CheckOutExtension("ImageAnalyst")
+#ASSIGN PATH OF TRAINED SAMPLES
+TS = "C:\RT test\Samples_Farm1\Trained_samples.shp"
+TS_Samples = arcpy.MakeFeatureLayer_management(TS,"TS_Layer")
+
+#EXECUTE RANDOM TREE
+TrainRandomTreesClassifier(Clipped,TS_Samples,"RT.ecd")
+
+
+#EXECUTE CLASSIFY RASTER TOOL
+In_Raster=ClassifyRaster(Clipped,"RT.ecd") 
+Ras = arcpy.Raster(In_Raster)
+
+#CONVERT THE RASTER INTO POLYGONS
+arcpy.conversion.RasterToPolygon(Ras,"raster_to_polygon.shp","NO_SIMPLIFY", "VALUE")
+
+#DISSOLVE SAME VALUES OF GRIDCODE                                         
+dissolve = arcpy.management.Dissolve('raster_to_polygon',"disslv", 'gridcode',"","","")
+arcpy.MakeFeatureLayer_management(dissolve,"layer")
+
+#ADD FIELD *Area* IN ATTRIBUTE TABLE
+arcpy.management.AddField("layer", "Area_acres", "FLOAT", None, None, None, '', "NULLABLE", "NON_REQUIRED", '')
+
+#CALCULATE AREA 
+arcpy.management.CalculateGeometryAttributes("layer", "Area_acres AREA_GEODESIC", '', "ACRES", None, "SAME_AS_INPUT")
